@@ -7,9 +7,14 @@ from pathlib import Path
 
 import yt_dlp
 
-from paths import category_dir, ensure_root, media_root
+from paths import VIDEO_EXT, category_dir, ensure_root, media_root
 
-FORMAT = "bestvideo[height<=720]+bestaudio/best[height<=720]/best"
+# Preferir audio en español si existe; si no, mejor audio.
+FORMAT = (
+    "bestvideo[height<=720]+bestaudio[language^=es]/"
+    "bestvideo[height<=720]+bestaudio/"
+    "best[height<=720]/best"
+)
 
 
 def _auth_opts(root: Path | None = None) -> dict:
@@ -56,6 +61,11 @@ def download_url(
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
+        # Solo subs manuales (no ASR / auto-generated).
+        "writesubtitles": True,
+        "writeautomaticsub": False,
+        "subtitleslangs": ["es", "en"],
+        "subtitlesformat": "vtt/srt/best",
         **_auth_opts(root),
     }
     try:
@@ -72,11 +82,12 @@ def download_url(
         raise RuntimeError(msg) from exc
     after = {p.resolve() for p in dest.iterdir() if p.is_file()}
     new = after - before
-    if not new:
-        raise RuntimeError("descarga sin archivo nuevo (¿ya existía?)")
-    if len(new) > 1:
-        return max(new, key=lambda p: p.stat().st_mtime)
-    return next(iter(new))
+    videos = {p for p in new if p.suffix.lower() in VIDEO_EXT}
+    if not videos:
+        raise RuntimeError("descarga sin archivo de vídeo nuevo")
+    if len(videos) > 1:
+        return max(videos, key=lambda p: p.stat().st_mtime)
+    return next(iter(videos))
 
 
 def search_yt(query: str, limit: int = 9) -> list[dict]:

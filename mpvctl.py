@@ -115,7 +115,12 @@ def ensure_running(root: Path | None = None) -> None:
     )
 
 
-def play_files(paths: list[str], root: Path | None = None) -> None:
+def play_files(
+    paths: list[str],
+    root: Path | None = None,
+    *,
+    sub_lang: str | None = None,
+) -> None:
     if not paths:
         raise RuntimeError("nada para reproducir")
     ensure_running(root)
@@ -126,10 +131,31 @@ def play_files(paths: list[str], root: Path | None = None) -> None:
         if resp.get("error") != "success":
             raise RuntimeError(f"loadfile falló ({p}): {resp}")
     _ipc(["set_property", "pause", False], root=root)
+    apply_subs(sub_lang, root)
 
 
-def play_one(path: str, root: Path | None = None) -> None:
-    play_files([path], root=root)
+def play_one(
+    path: str,
+    root: Path | None = None,
+    *,
+    sub_lang: str | None = None,
+) -> None:
+    play_files([path], root=root, sub_lang=sub_lang)
+
+
+def apply_subs(lang: str | None, root: Path | None = None) -> None:
+    """lang None = off; 'es'|'en' = preferir ese idioma de pista."""
+    if not is_running(root):
+        return
+    if lang is None:
+        resp = _ipc(["set_property", "sid", "no"], root=root)
+        if resp.get("error") != "success":
+            raise RuntimeError(f"cc off falló: {resp}")
+        return
+    _ipc(["set_property", "slang", lang], root=root)
+    resp = _ipc(["set_property", "sid", "auto"], root=root)
+    if resp.get("error") != "success":
+        raise RuntimeError(f"cc {lang} falló: {resp}")
 
 
 def append_file(path: str, root: Path | None = None) -> None:
@@ -186,9 +212,12 @@ def quit(root: Path | None = None) -> None:
             pass
 
 
-def status_text(root: Path | None = None) -> str:
+def status_text(
+    root: Path | None = None, *, sub_lang: str | None = None
+) -> str:
+    cc = f"cc: {sub_lang}" if sub_lang else "cc: off"
     if not is_running(root):
-        return "mpv: cerrado"
+        return f"mpv: cerrado\n{cc}"
     path = _ipc(["get_property", "path"], root=root)
     pause = _ipc(["get_property", "pause"], root=root)
     pos = _ipc(["get_property", "playlist-pos"], root=root)
@@ -199,5 +228,6 @@ def status_text(root: Path | None = None) -> str:
     return (
         f"mpv: {state}\n"
         f"archivo: {title}\n"
-        f"playlist: {pos.get('data')}/{count.get('data')}"
+        f"playlist: {pos.get('data')}/{count.get('data')}\n"
+        f"{cc}"
     )

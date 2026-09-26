@@ -22,6 +22,7 @@ comandos:
   queue <n|cat>  encola ítem (lib/search) o categoría entera
   search <q>     busca en YouTube (luego queue <n>)
   mv <n> <cat>   mueve ítem a categoría (crea cat si no existe)
+  cc [es|en]     subtítulos on (idioma) / off (sin arg)
   next pause     control mpv
   stop           cierra mpv
   status         estado mpv + cola
@@ -35,6 +36,7 @@ class Repl:
         self.lib: list[library.LibItem] = []
         self.search_hits: list[dict] = []
         self.focus = "lib"  # lib | search
+        self.cc_lang: str | None = None  # sesión: es|en|None
         worker.start(self.root)
 
     def refresh_lib(self, category: str | None = None) -> None:
@@ -148,7 +150,9 @@ class Repl:
                 print("cola vacía — queue <n|cat> o search")
                 return
             try:
-                mpvctl.play_files(ready, self.root)
+                mpvctl.play_files(
+                    ready, self.root, sub_lang=self.cc_lang
+                )
             except RuntimeError as exc:
                 print(exc)
                 return
@@ -170,7 +174,9 @@ class Repl:
             print(f"no hay ítem {n} — corre list")
             return
         try:
-            mpvctl.play_one(str(it.path), self.root)
+            mpvctl.play_one(
+                str(it.path), self.root, sub_lang=self.cc_lang
+            )
         except RuntimeError as exc:
             print(exc)
             return
@@ -195,8 +201,48 @@ class Repl:
             print(f"ya existe: {dest}")
             return
         shutil.move(str(it.path), str(dest))
-        print(f"movido → {dest}")
+        # Sidecars de subs: Title [id].es.vtt, etc.
+        moved_subs = 0
+        stem = it.path.stem
+        parent = it.path.parent
+        for p in list(parent.iterdir()):
+            if not p.is_file():
+                continue
+            if p.name.startswith(stem + ".") and p.suffix.lower() in {
+                ".vtt",
+                ".srt",
+                ".ass",
+            }:
+                target = dest_dir / p.name
+                if not target.exists():
+                    shutil.move(str(p), str(target))
+                    moved_subs += 1
+        extra = f" (+{moved_subs} subs)" if moved_subs else ""
+        print(f"movido → {dest}{extra}")
         self.refresh_lib()
+
+    def cmd_cc(self, args: list[str]) -> None:
+        if not args:
+            self.cc_lang = None
+            try:
+                mpvctl.apply_subs(None, self.root)
+            except RuntimeError as exc:
+                print(exc)
+                return
+            print("cc: off")
+            return
+        lang = args[0].lower()
+        if lang not in ("es", "en"):
+            print("uso: cc [es|en]  (sin arg = off)")
+            return
+        self.cc_lang = lang
+        try:
+            mpvctl.apply_subs(lang, self.root)
+        except RuntimeError as exc:
+            # mpv cerrado: queda para el próximo play
+            print(f"cc: {lang} (sesión; mpv no corría: {exc})")
+            return
+        print(f"cc: {lang}")
 
     def cmd_next(self, _: list[str]) -> None:
         try:
@@ -219,7 +265,7 @@ class Repl:
     def cmd_status(self, _: list[str]) -> None:
         print(f"root: {self.root}")
         print(f"focus: {self.focus}")
-        print(mpvctl.status_text(self.root))
+        print(mpvctl.status_text(self.root, sub_lang=self.cc_lang))
         items = queue_store.list_items(self.root)
         print(f"cola: {len(items)} ítem(s)")
 
@@ -245,6 +291,7 @@ class Repl:
             "queue": self.cmd_queue,
             "play": self.cmd_play,
             "mv": self.cmd_mv,
+            "cc": self.cmd_cc,
             "next": self.cmd_next,
             "pause": self.cmd_pause,
             "stop": self.cmd_stop,

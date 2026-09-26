@@ -45,10 +45,15 @@ Override raíz: `YD_MEDIA_ROOT=/otra/ruta make run`.
 | `queue <n\|cat>` | encola ítem o categoría |
 | `search <q>` | YouTube → `queue n` encola URL (dl async) |
 | `mv <n> <cat>` | mueve; **crea** cat si no existe |
+| `cc [es\|en]` | subtítulos sesión; sin arg = off |
 | `next` `pause` | control |
 | `stop` | **cierra** mpv |
 | `status` | mpv + cola |
 | `help` `exit` | |
+
+Descargas: audio **es** si existe; subs **manuales** `es`+`en`
+(no auto-generados) junto al vídeo. `mv` mueve también los
+`.vtt`/`.srt` hermanos.
 
 Tras `search`, los números de `queue n` son resultados de
 búsqueda. Tras `list`, son IDs de biblioteca.

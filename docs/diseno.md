@@ -23,6 +23,8 @@ Laura: `[PER-MEDIA]`
 | Cola | archivos + URLs; worker descarga async → `inbox/` |
 | `stop` | `quit` de mpv (proceso cerrado) |
 | Focus | `list`→lib; `search`→search (`queue n`) |
+| Audio | preferir pista `es` si yt-dlp la ofrece |
+| Subs | solo manuales `es`+`en` (no ASR); `cc [es\|en]` en sesión |
 
 ## Comandos
 
