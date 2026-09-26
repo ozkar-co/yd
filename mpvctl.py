@@ -83,6 +83,7 @@ def ensure_running(root: Path | None = None) -> None:
         "mpv",
         "--idle=yes",
         "--force-window=yes",
+        "--fullscreen",
         "--keep-open=yes",
         f"--input-ipc-server={sock}",
         "--no-terminal",
