@@ -6,6 +6,7 @@ import shlex
 import shutil
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 import download
 import library
@@ -21,11 +22,12 @@ comandos:
   queue          muestra cola de reproducción
   queue <n|cat>  encola ítem (lib/search) o categoría entera
   search <q>     busca en YouTube (luego queue <n>)
+  dl <url>       vídeo → inbox; playlist → carpeta (si ya está, salta)
   mv <n> <cat>   mueve ítem a categoría (crea cat si no existe)
   cc [es|en]     subtítulos on (idioma) / off (sin arg)
   next pause     control mpv
   stop           cierra mpv
-  status         estado mpv + cola
+  status         config (cats, archivos, cookies) + mpv + cola
   help exit      ayuda / salir
 """
 
@@ -118,6 +120,21 @@ class Repl:
                 return
         queue_store.enqueue_file(it.path, self.root)
         print(f"encolado: {it.path.name}")
+
+    def cmd_dl(self, args: list[str]) -> None:
+        if len(args) != 1 or not _is_url(args[0]):
+            print("uso: dl <url>")
+            return
+        url = args[0]
+        state = queue_store.enqueue_url(url, url, self.root)
+        kind = "playlist" if download.is_playlist_url(url) else "vídeo"
+        if state == "queued":
+            print(f"ya en cola: {url}")
+            return
+        if state == "retry":
+            print(f"reintento ({kind}): {url}")
+            return
+        print(f"encolado ({kind}): {url}")
 
     def cmd_queue(self, args: list[str]) -> None:
         if not args:
@@ -262,8 +279,33 @@ class Repl:
         mpvctl.quit(self.root)
         print("mpv cerrado")
 
+    def config_lines(self) -> list[str]:
+        cats = list_categories(self.root)
+        items = library.scan(self.root)
+        counts: dict[str, int] = {}
+        for it in items:
+            counts[it.category] = counts.get(it.category, 0) + 1
+        if cats:
+            shown = ", ".join(f"{c} ({counts.get(c, 0)})" for c in cats)
+            cat_line = f"categorías: {shown}"
+        else:
+            cat_line = "categorías: (ninguna — mv n <nombre> crea una)"
+        tools = []
+        for name in ("mpv", "ffmpeg"):
+            tools.append(
+                f"{name} {'ok' if shutil.which(name) else 'no está en PATH'}"
+            )
+        return [
+            cat_line,
+            f"archivos: {len(items)}",
+            f"cookies: {download.cookie_status(self.root)}",
+            "herramientas: " + ", ".join(tools),
+        ]
+
     def cmd_status(self, _: list[str]) -> None:
         print(f"root: {self.root}")
+        for line in self.config_lines():
+            print(line)
         print(f"focus: {self.focus}")
         print(mpvctl.status_text(self.root, sub_lang=self.cc_lang))
         items = queue_store.list_items(self.root)
@@ -288,6 +330,7 @@ class Repl:
         handlers = {
             "list": self.cmd_list,
             "search": self.cmd_search,
+            "dl": self.cmd_dl,
             "queue": self.cmd_queue,
             "play": self.cmd_play,
             "mv": self.cmd_mv,
@@ -306,6 +349,8 @@ class Repl:
 
     def run(self) -> int:
         print(f"yd — media: {self.root}")
+        for line in self.config_lines():
+            print(line)
         print("help para comandos; exit para salir")
         while True:
             try:
@@ -321,6 +366,11 @@ class Repl:
         mpvctl.quit(self.root)
         worker.stop_worker()
         return 0
+
+
+def _is_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
 
 
 def main() -> int:

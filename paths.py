@@ -1,8 +1,14 @@
-"""Raíz de biblioteca: ./media (cwd) o YD_MEDIA_ROOT."""
+"""Raíz de biblioteca: ./media junto al proceso, o YD_MEDIA_ROOT.
+
+En desarrollo es el directorio de trabajo. En el bundle de `make dist`
+es la carpeta del ejecutable (la misma donde vive `yd`). YD_MEDIA_ROOT
+la saca de ahí.
+"""
 
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 RESERVED = frozenset(
@@ -28,11 +34,17 @@ VIDEO_EXT = frozenset(
 )
 
 
+def _app_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path.cwd()
+
+
 def media_root() -> Path:
     raw = os.environ.get("YD_MEDIA_ROOT", "").strip()
     if raw:
         return Path(raw).expanduser().resolve()
-    return (Path.cwd() / "media").resolve()
+    return (_app_dir() / "media").resolve()
 
 
 def queue_path(root: Path | None = None) -> Path:

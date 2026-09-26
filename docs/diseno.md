@@ -8,7 +8,8 @@ status: active
 # yd — diseño
 
 CLI → **REPL** de estación multimedia. Repo portable: biblioteca
-por defecto `./media` (cwd del proceso).
+por defecto `./media` junto al proceso (cwd en dev; carpeta del
+ejecutable en `make dist`). `YD_MEDIA_ROOT` la pone en otra ruta.
 
 Laura: `[PER-MEDIA]`
 `estacion-multimedia.md`.
@@ -17,10 +18,10 @@ Laura: `[PER-MEDIA]`
 
 | Concepto | Regla |
 |----------|-------|
-| Raíz | `./media` o `YD_MEDIA_ROOT` |
+| Raíz | `./media` junto al ejecutable, o `YD_MEDIA_ROOT` |
 | Categorías | subdirs creados con `mv n cat` (no `init`) |
 | IDs | asignados al hacer `list` (sesión) |
-| Cola | archivos + URLs; worker descarga async → `inbox/` |
+| Cola | archivos + URLs; `dl` manda un vídeo a `inbox/` y una playlist a una carpeta con su título |
 | `stop` | `quit` de mpv (proceso cerrado) |
 | Focus | `list`→lib; `search`→search (`queue n`) |
 | Audio | preferir pista `es` si yt-dlp la ofrece |
@@ -28,11 +29,16 @@ Laura: `[PER-MEDIA]`
 
 ## Comandos
 
-`list`, `play`, `queue`, `search`, `mv`, `next`, `pause`,
+`list`, `play`, `queue`, `search`, `dl`, `mv`, `next`, `pause`,
 `stop`, `status`, `help`, `exit`.
+
+Al arrancar y en `status`: categorías (con conteo), archivos,
+cookies (`YD_COOKIES`, `YD_COOKIES_FROM_BROWSER` o `cookies.txt`)
+y si `mpv`/`ffmpeg` están en el PATH.
 
 ## Stack
 
 `yt-dlp` + `mpv` IPC + hilo `worker` + `./run.sh` / `make run`
-(modo **dev**). Deploy: `make dist` (Nuitka onedir) según
-`[PREF-DIST]` en Laura `docs/preferencias-proyectos-minimos.md`.
+(modo **dev**). Deploy: `make dist` (PyInstaller onedir; `yt-dlp`
+es demasiado grande para Nuitka) según `[PREF-DIST]` en Laura
+`docs/preferencias-proyectos-minimos.md`.

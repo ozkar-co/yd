@@ -25,6 +25,24 @@ def _load(path: Path) -> dict[str, Any]:
     return data
 
 
+def _normalize_items(raw: list[Any]) -> tuple[list[dict[str, Any]], bool]:
+    """Acepta la cola vieja (rutas sueltas) y descarta ítems ilegibles."""
+    items: list[dict[str, Any]] = []
+    changed = False
+    for item in raw:
+        if isinstance(item, str):
+            text = item.strip()
+            if text:
+                items.append({"kind": "file", "path": text})
+            changed = True
+            continue
+        if isinstance(item, dict):
+            items.append(item)
+            continue
+        changed = True
+    return items, changed
+
+
 def _save(path: Path, data: dict[str, Any]) -> None:
     ensure_root(path.parent)
     path.write_text(
@@ -34,8 +52,15 @@ def _save(path: Path, data: dict[str, Any]) -> None:
 
 
 def list_items(root: Path | None = None) -> list[dict[str, Any]]:
+    path = queue_path(root)
     with _lock:
-        return list(_load(queue_path(root))["items"])
+        items, changed = _normalize_items(_load(path)["items"])
+        if changed:
+            try:
+                _save(path, {"items": items})
+            except OSError:
+                pass
+        return items
 
 
 def _write_items(items: list[dict[str, Any]], root: Path | None = None) -> None:
@@ -55,10 +80,19 @@ def enqueue_file(path: Path, root: Path | None = None) -> None:
     _write_items(items, root)
 
 
-def enqueue_url(url: str, title: str = "", root: Path | None = None) -> None:
+def enqueue_url(url: str, title: str = "", root: Path | None = None) -> str:
+    """'new', 'retry' (estaba en error) o 'queued'."""
     items = list_items(root)
-    if any(i.get("kind") == "url" and i.get("url") == url for i in items):
-        return
+    for item in items:
+        if item.get("kind") == "url" and item.get("url") == url:
+            if item.get("status") == "error":
+                item["status"] = "pending"
+                item.pop("error", None)
+                if title:
+                    item["title"] = title
+                _write_items(items, root)
+                return "retry"
+            return "queued"
     items.append(
         {
             "kind": "url",
@@ -68,6 +102,19 @@ def enqueue_url(url: str, title: str = "", root: Path | None = None) -> None:
         }
     )
     _write_items(items, root)
+    return "new"
+
+
+def reset_interrupted(root: Path | None = None) -> None:
+    """Un corte deja la URL en 'downloading'. Al arrancar vuelve a pending."""
+    items = list_items(root)
+    changed = False
+    for item in items:
+        if item.get("kind") == "url" and item.get("status") == "downloading":
+            item["status"] = "pending"
+            changed = True
+    if changed:
+        _write_items(items, root)
 
 
 def enqueue_files(paths: list[Path], root: Path | None = None) -> int:
@@ -78,6 +125,40 @@ def enqueue_files(paths: list[Path], root: Path | None = None) -> int:
         if len(list_items(root)) > before:
             n += 1
     return n
+
+
+def replace_url_with_files(
+    url: str, file_paths: list[Path], root: Path | None = None
+) -> None:
+    items = list_items(root)
+    existing = {
+        i.get("path")
+        for i in items
+        if i.get("kind") == "file" and i.get("path")
+    }
+    files: list[dict[str, Any]] = []
+    for path in file_paths:
+        resolved = str(path.resolve())
+        if resolved in existing:
+            continue
+        existing.add(resolved)
+        files.append(
+            {"kind": "file", "path": resolved, "title": path.name}
+        )
+    new_items: list[dict[str, Any]] = []
+    replaced = False
+    for item in items:
+        if (
+            not replaced
+            and item.get("kind") == "url"
+            and item.get("url") == url
+        ):
+            new_items.extend(files)
+            replaced = True
+            continue
+        new_items.append(item)
+    if replaced:
+        _write_items(new_items, root)
 
 
 def promote_url(url: str, file_path: Path, root: Path | None = None) -> None:

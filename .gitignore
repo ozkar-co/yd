@@ -11,3 +11,4 @@ dist/
 *.dist/
 *.onefile-build/
 build/
+*.spec

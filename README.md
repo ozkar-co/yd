@@ -6,11 +6,12 @@ REPL: descarga YouTube (≤720p) + cola + mpv. Biblioteca en
 ```bash
 make setup
 make run              # modo dev (run.sh + .venv)
-make dist             # Nuitka onedir → dist/ (deploy)
+make dist             # PyInstaller onedir → dist/ (deploy)
 make clean            # venv + caches + dist (no ./media)
 ```
 
 ```
+yd> dl https://www.youtube.com/watch?v=…
 yd> search queen of kings
 yd> queue 1
 yd> list
@@ -32,15 +33,17 @@ Diseño: [docs/diseno.md](docs/diseno.md).
 ```bash
 make setup          # .venv + deps
 make run            # REPL en modo dev
-make dist           # Nuitka onedir (copiar carpeta al host)
+make dist           # PyInstaller onedir (copiar dist/ al host)
 make clean          # borra .venv / caches / dist (no ./media)
 ```
 
-Deploy (`[PREF-DIST]`): en el host solo el bundle + `mpv`/`ffmpeg`
-de apt. Datos en `./media` junto al ejecutable. Updates =
-`make dist` + volver a copiar (congelado a propósito).
+Deploy (`[PREF-DIST]`): PyInstaller, no Nuitka. `yt-dlp` es Python
+puro muy grande; copiarlo tarda segundos y compilarlo a C, una hora.
+En el host, la carpeta `dist/` (`./yd` + `yd.pkg/`) más `mpv`/`ffmpeg`
+de apt. `./media` se crea en esa misma carpeta. Updates = `make dist`
+y volver a copiar el programa, sin pisar `media/`.
 
-Override raíz: `YD_MEDIA_ROOT=/otra/ruta make run`.
+Otra raíz, explícita: `YD_MEDIA_ROOT=/otra/ruta ./yd`.
 
 ## Comandos REPL
 
@@ -51,11 +54,12 @@ Override raíz: `YD_MEDIA_ROOT=/otra/ruta make run`.
 | `queue` | muestra cola |
 | `queue <n\|cat>` | encola ítem o categoría |
 | `search <q>` | YouTube → `queue n` encola URL (dl async) |
+| `dl <url>` | vídeo → `inbox/`; playlist → carpeta. Si el archivo ya está, salta |
 | `mv <n> <cat>` | mueve; **crea** cat si no existe |
 | `cc [es\|en]` | subtítulos sesión; sin arg = off |
 | `next` `pause` | control |
 | `stop` | **cierra** mpv |
-| `status` | mpv + cola |
+| `status` | categorías, archivos, cookies, mpv/ffmpeg + cola |
 | `help` `exit` | |
 
 Descargas: audio **es** si existe; subs **manuales** `es`+`en`
