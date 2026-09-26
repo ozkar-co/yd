@@ -33,4 +33,6 @@ Laura: `[PER-MEDIA]`
 
 ## Stack
 
-`yt-dlp` + `mpv` IPC + hilo `worker` + `./run.sh` / `make run`.
+`yt-dlp` + `mpv` IPC + hilo `worker` + `./run.sh` / `make run`
+(modo **dev**). Deploy: `make dist` (Nuitka onedir) según
+`[PREF-DIST]` en Laura `docs/preferencias-proyectos-minimos.md`.

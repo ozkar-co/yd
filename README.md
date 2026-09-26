@@ -5,7 +5,9 @@ REPL: descarga YouTube (≤720p) + cola + mpv. Biblioteca en
 
 ```bash
 make setup
-make run
+make run              # modo dev (run.sh + .venv)
+make dist             # Nuitka onedir → dist/ (deploy)
+make clean            # venv + caches + dist (no ./media)
 ```
 
 ```
@@ -29,9 +31,14 @@ Diseño: [docs/diseno.md](docs/diseno.md).
 
 ```bash
 make setup          # .venv + deps
-make run            # entra al REPL
-make nukita         # borra .venv / caches (no ./media)
+make run            # REPL en modo dev
+make dist           # Nuitka onedir (copiar carpeta al host)
+make clean          # borra .venv / caches / dist (no ./media)
 ```
+
+Deploy (`[PREF-DIST]`): en el host solo el bundle + `mpv`/`ffmpeg`
+de apt. Datos en `./media` junto al ejecutable. Updates =
+`make dist` + volver a copiar (congelado a propósito).
 
 Override raíz: `YD_MEDIA_ROOT=/otra/ruta make run`.
 
