@@ -4,3 +4,5 @@ __pycache__/
 .env
 *.sqlite
 .DS_Store
+cookies.txt
+**/cookies.txt

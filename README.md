@@ -27,6 +27,32 @@ python3 -m venv .venv
 
 Biblioteca por defecto: `~/data/media` (`YD_MEDIA_ROOT`).
 
+## Sesión YouTube (403 Forbidden)
+
+yt-dlp **no inicia sesión** con usuario/clave. Usa cookies de un
+navegador donde ya estés logueado.
+
+**Opción A — navegador en el AIO** (recomendado si XFCE tiene Firefox):
+
+```bash
+# una vez logueado en youtube.com en Firefox del AIO
+export YD_COOKIES_FROM_BROWSER=firefox
+./run.sh dl 'URL'
+```
+
+Chrome/Chromium: `YD_COOKIES_FROM_BROWSER=chromium` (o `chrome`).
+Perfil concreto: `firefox:default-release`.
+
+**Opción B — archivo `cookies.txt`**
+
+1. En el PC donde tengas sesión YT, extensión
+   *Get cookies.txt LOCALLY* → exportar para youtube.com.
+2. Copiar a `~/data/media/cookies.txt` en el AIO
+   (se usa solo si existe; no va a git).
+3. O: `YD_COOKIES=/ruta/cookies.txt ./run.sh dl 'URL'`
+
+`cookies.txt` es secreto de sesión: no lo subas al repo.
+
 ## Comandos
 
 | Comando | Efecto |

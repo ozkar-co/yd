@@ -53,3 +53,13 @@ el camino nuevo es subcomandos.
 Si `yd play` corre por SSH, necesita `DISPLAY` (y a menudo
 `XAUTHORITY`) de la sesión gráfica del usuario. Fail-fast si
 mpv no puede abrir ventana.
+
+## Sesión YouTube
+
+No hay login interactivo. Cookies:
+
+| Variable / archivo | Uso |
+|--------------------|-----|
+| `YD_COOKIES_FROM_BROWSER` | `firefox`, `chromium`, … |
+| `YD_COOKIES` | path a `cookies.txt` |
+| `$YD_MEDIA_ROOT/cookies.txt` | auto si existe |
