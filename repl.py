@@ -25,6 +25,7 @@ comandos:
   dl <url>       vídeo → inbox; playlist → carpeta (si ya está, salta)
   mv <n> <cat>   mueve ítem a categoría (crea cat si no existe)
   cc [es|en]     subtítulos on (idioma) / off (sin arg)
+  random [on]    cola aleatoria on / off (sin arg)
   next pause     control mpv
   stop           cierra mpv
   status         config (cats, archivos, cookies) + mpv + cola
@@ -39,6 +40,7 @@ class Repl:
         self.search_hits: list[dict] = []
         self.focus = "lib"  # lib | search
         self.cc_lang: str | None = None  # sesión: es|en|None
+        self.shuffle = False  # sesión: reproducir la cola al azar
         worker.start(self.root)
 
     def refresh_lib(self, category: str | None = None) -> None:
@@ -168,12 +170,16 @@ class Repl:
                 return
             try:
                 mpvctl.play_files(
-                    ready, self.root, sub_lang=self.cc_lang
+                    ready,
+                    self.root,
+                    sub_lang=self.cc_lang,
+                    shuffle=self.shuffle,
                 )
             except RuntimeError as exc:
                 print(exc)
                 return
-            print(f"play cola: {len(ready)} listos"
+            extra = " random" if self.shuffle else ""
+            print(f"play cola: {len(ready)} listos{extra}"
                   + (f", {len(pending)} pendientes" if pending else ""))
             return
         if not args[0].isdigit():
@@ -261,6 +267,27 @@ class Repl:
             return
         print(f"cc: {lang}")
 
+    def cmd_random(self, args: list[str]) -> None:
+        if not args:
+            self.shuffle = False
+            try:
+                mpvctl.apply_shuffle(False, self.root)
+            except RuntimeError as exc:
+                print(exc)
+                return
+            print("random: off")
+            return
+        if args[0].lower() != "on":
+            print("uso: random [on]  (sin arg = off)")
+            return
+        self.shuffle = True
+        try:
+            mpvctl.apply_shuffle(True, self.root)
+        except RuntimeError as exc:
+            print(f"random: on (sesión; mpv no corría: {exc})")
+            return
+        print("random: on")
+
     def cmd_next(self, _: list[str]) -> None:
         try:
             mpvctl.next_track(self.root)
@@ -307,7 +334,9 @@ class Repl:
         for line in self.config_lines():
             print(line)
         print(f"focus: {self.focus}")
-        print(mpvctl.status_text(self.root, sub_lang=self.cc_lang))
+        print(mpvctl.status_text(
+            self.root, sub_lang=self.cc_lang, shuffle=self.shuffle
+        ))
         items = queue_store.list_items(self.root)
         print(f"cola: {len(items)} ítem(s)")
 
@@ -335,6 +364,7 @@ class Repl:
             "play": self.cmd_play,
             "mv": self.cmd_mv,
             "cc": self.cmd_cc,
+            "random": self.cmd_random,
             "next": self.cmd_next,
             "pause": self.cmd_pause,
             "stop": self.cmd_stop,

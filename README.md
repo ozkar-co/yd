@@ -25,7 +25,7 @@ Diseño: [docs/diseno.md](docs/diseno.md).
 
 ## Requisitos
 
-- Python 3.10+, `ffmpeg`, `mpv`
+- Python 3.10+, `ffmpeg`, `mpv`, `deno` (firmas de YouTube; sin eso los videos con restricción de edad fallan)
 - Cookies si YouTube da 403 (ver abajo)
 
 ## Setup
@@ -57,6 +57,7 @@ Otra raíz, explícita: `YD_MEDIA_ROOT=/otra/ruta ./yd`.
 | `dl <url>` | vídeo → `inbox/`; playlist → carpeta. Si el archivo ya está, salta |
 | `mv <n> <cat>` | mueve; **crea** cat si no existe |
 | `cc [es\|en]` | subtítulos sesión; sin arg = off |
+| `random [on]` | mezcla la cola; sin arg = off |
 | `next` `pause` | control |
 | `stop` | **cierra** mpv |
 | `status` | categorías, archivos, cookies, mpv/ffmpeg + cola |

@@ -120,6 +120,7 @@ def play_files(
     root: Path | None = None,
     *,
     sub_lang: str | None = None,
+    shuffle: bool = False,
 ) -> None:
     if not paths:
         raise RuntimeError("nada para reproducir")
@@ -132,6 +133,7 @@ def play_files(
             raise RuntimeError(f"loadfile falló ({p}): {resp}")
     _ipc(["set_property", "pause", False], root=root)
     apply_subs(sub_lang, root)
+    apply_shuffle(shuffle, root)
 
 
 def play_one(
@@ -141,6 +143,20 @@ def play_one(
     sub_lang: str | None = None,
 ) -> None:
     play_files([path], root=root, sub_lang=sub_lang)
+
+
+def apply_shuffle(enabled: bool, root: Path | None = None) -> None:
+    """Mezcla la playlist de mpv. Apagado no reordena lo que ya suena."""
+    if not is_running(root):
+        return
+    resp = _ipc(["set_property", "shuffle", bool(enabled)], root=root)
+    if resp.get("error") != "success":
+        raise RuntimeError(f"random falló: {resp}")
+    if not enabled:
+        return
+    resp = _ipc(["playlist-shuffle"], root=root)
+    if resp.get("error") != "success":
+        raise RuntimeError(f"random falló: {resp}")
 
 
 def apply_subs(lang: str | None, root: Path | None = None) -> None:
@@ -213,11 +229,15 @@ def quit(root: Path | None = None) -> None:
 
 
 def status_text(
-    root: Path | None = None, *, sub_lang: str | None = None
+    root: Path | None = None,
+    *,
+    sub_lang: str | None = None,
+    shuffle: bool = False,
 ) -> str:
     cc = f"cc: {sub_lang}" if sub_lang else "cc: off"
+    rnd = "random: on" if shuffle else "random: off"
     if not is_running(root):
-        return f"mpv: cerrado\n{cc}"
+        return f"mpv: cerrado\n{cc}\n{rnd}"
     path = _ipc(["get_property", "path"], root=root)
     pause = _ipc(["get_property", "pause"], root=root)
     pos = _ipc(["get_property", "playlist-pos"], root=root)
@@ -229,5 +249,6 @@ def status_text(
         f"mpv: {state}\n"
         f"archivo: {title}\n"
         f"playlist: {pos.get('data')}/{count.get('data')}\n"
-        f"{cc}"
+        f"{cc}\n"
+        f"{rnd}"
     )

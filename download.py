@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import tempfile
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -31,7 +33,7 @@ def _auth_opts(root: Path | None = None) -> dict:
         path = Path(cookies).expanduser().resolve()
         if not path.is_file():
             raise RuntimeError(f"no existe archivo de cookies: {path}")
-        opts["cookiefile"] = str(path)
+        opts["cookiefile"] = _cookie_snapshot(path)
         return opts
     if browser:
         if ":" in browser:
@@ -42,8 +44,25 @@ def _auth_opts(root: Path | None = None) -> dict:
         return opts
     default = (root or media_root()) / "cookies.txt"
     if default.is_file():
-        opts["cookiefile"] = str(default.resolve())
+        opts["cookiefile"] = _cookie_snapshot(default.resolve())
     return opts
+
+
+def _cookie_snapshot(src: Path) -> str:
+    """Copia temporal. yt-dlp reescribe el cookiefile al cerrar y se lleva LOGIN_INFO."""
+    fd, name = tempfile.mkstemp(prefix="yd-cookies-", suffix=".txt")
+    os.close(fd)
+    shutil.copyfile(src, name)
+    return name
+
+
+def _discard_cookie_snapshot(opts: dict) -> None:
+    raw = opts.get("cookiefile")
+    if not isinstance(raw, str):
+        return
+    path = Path(raw)
+    if path.name.startswith("yd-cookies-"):
+        path.unlink(missing_ok=True)
 
 
 def cookie_status(root: Path | None = None) -> str:
@@ -69,9 +88,28 @@ def _cookie_file_status(path: Path, label: str) -> str:
     if path.stat().st_size == 0:
         return f"vacío {label}"
     text = path.read_text(encoding="utf-8", errors="replace")
+    names = _cookie_names(text)
     if "youtube.com" not in text and "youtu.be" not in text:
         return f"{label} (sin cookies de youtube)"
+    if "LOGIN_INFO" not in names or not (
+        {"SAPISID", "__Secure-1PAPISID", "__Secure-3PAPISID"} & names
+    ):
+        return f"{label} (sin sesión: falta LOGIN_INFO o SAPISID)"
     return f"ok {label}"
+
+
+def _cookie_names(text: str) -> set[str]:
+    names: set[str] = set()
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("#HttpOnly_"):
+            line = line[len("#HttpOnly_") :]
+        elif not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 7:
+            names.add(parts[5])
+    return names
 
 
 def is_playlist_url(url: str) -> bool:
@@ -191,6 +229,8 @@ def _playlist_info(url: str, root: Path) -> dict:
             info = ydl.extract_info(url, download=False)
     except yt_dlp.utils.DownloadError as exc:
         _raise_download(exc)
+    finally:
+        _discard_cookie_snapshot(opts)
     if not isinstance(info, dict):
         raise RuntimeError("playlist vacía")
     return info
@@ -239,6 +279,17 @@ def _download_playlist(url: str, root: Path) -> list[Path]:
     return paths
 
 
+def _prepare_runtime() -> None:
+    """deno resuelve la firma de YouTube. El instalador lo deja en ~/.local/deno/bin."""
+    extra = Path.home() / ".local" / "deno" / "bin"
+    if not (extra / "deno").is_file():
+        return
+    entry = str(extra)
+    path = os.environ.get("PATH", "")
+    if entry not in path.split(":"):
+        os.environ["PATH"] = f"{entry}:{path}" if path else entry
+
+
 def _download_to(
     url: str,
     *,
@@ -247,6 +298,7 @@ def _download_to(
     noplaylist: bool,
 ) -> list[Path]:
     root = ensure_root(root)
+    _prepare_runtime()
     dest = category_dir(category, root, create=True)
     before = {p.resolve() for p in dest.iterdir() if p.is_file()}
     opts = {
@@ -261,6 +313,8 @@ def _download_to(
         "writeautomaticsub": False,
         "subtitleslangs": ["es", "en"],
         "subtitlesformat": "vtt/srt/best",
+        # Solver de firmas (edad / n-challenge). Sin esto yt-dlp no baja el script.
+        "remote_components": ["ejs:github"],
         **_auth_opts(root),
     }
     if not noplaylist:
@@ -270,6 +324,8 @@ def _download_to(
             info = ydl.extract_info(url, download=True)
     except yt_dlp.utils.DownloadError as exc:
         _raise_download(exc)
+    finally:
+        _discard_cookie_snapshot(opts)
     videos = _videos_from_info(info, dest, before)
     if not videos:
         raise RuntimeError("descarga sin archivo de vídeo nuevo")
@@ -346,8 +402,11 @@ def search_yt(query: str, limit: int = 9) -> list[dict]:
         "extract_flat": True,
         **_auth_opts(),
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        data = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            data = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+    finally:
+        _discard_cookie_snapshot(opts)
     entries = (data or {}).get("entries") or []
     hits: list[dict] = []
     for e in entries:

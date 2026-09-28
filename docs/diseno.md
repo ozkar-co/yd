@@ -26,11 +26,12 @@ Laura: `[PER-MEDIA]`
 | Focus | `list`→lib; `search`→search (`queue n`) |
 | Audio | preferir pista `es` si yt-dlp la ofrece |
 | Subs | solo manuales `es`+`en` (no ASR); `cc [es\|en]` en sesión |
+| Random | `random on` mezcla la cola actual; sin arg lo apaga |
 
 ## Comandos
 
-`list`, `play`, `queue`, `search`, `dl`, `mv`, `next`, `pause`,
-`stop`, `status`, `help`, `exit`.
+`list`, `play`, `queue`, `search`, `dl`, `mv`, `cc`, `random`,
+`next`, `pause`, `stop`, `status`, `help`, `exit`.
 
 Al arrancar y en `status`: categorías (con conteo), archivos,
 cookies (`YD_COOKIES`, `YD_COOKIES_FROM_BROWSER` o `cookies.txt`)
