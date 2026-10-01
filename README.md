@@ -50,14 +50,15 @@ Otra raíz, explícita: `YD_MEDIA_ROOT=/otra/ruta ./yd`.
 | Comando | Efecto |
 |---------|--------|
 | `list [cat]` | IDs únicos; o una categoría |
-| `play [n]` | cola lista, o ítem n |
+| `play [n]` | cola lista, o ítem n. Si ya está sonando, no la reinicia |
 | `queue` | muestra cola |
 | `queue <n\|cat>` | encola ítem o categoría |
 | `search <q>` | YouTube → `queue n` encola URL (dl async) |
-| `dl <url>` | vídeo → `inbox/`; playlist → carpeta. Si el archivo ya está, salta |
+| `dl <url>` | vídeo → `inbox/`; playlist → carpeta. Si algún `[id]` del nombre ya está en cualquier carpeta, salta |
 | `mv <n> <cat>` | mueve; **crea** cat si no existe |
 | `cc [es\|en]` | subtítulos sesión; sin arg = off |
-| `random [on]` | mezcla la cola; sin arg = off |
+| `random` | revuelve toda la cola y la reproduce desde el inicio |
+| `clear` | vacía la cola y la playlist de mpv |
 | `next` `pause` | control |
 | `stop` | **cierra** mpv |
 | `status` | categorías, archivos, cookies, mpv/ffmpeg + cola |
@@ -72,6 +73,7 @@ búsqueda. Tras `list`, son IDs de biblioteca.
 
 La cola descarga URLs en un hilo; cuando terminan, entran a
 `inbox/` y se pueden `play` / append a mpv si ya está sonando.
+Cuando un archivo empieza a sonar, sale de la cola.
 
 ## Sesión YouTube (403)
 

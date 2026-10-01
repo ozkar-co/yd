@@ -21,17 +21,19 @@ Laura: `[PER-MEDIA]`
 | Raíz | `./media` junto al ejecutable, o `YD_MEDIA_ROOT` |
 | Categorías | subdirs creados con `mv n cat` (no `init`) |
 | IDs | asignados al hacer `list` (sesión) |
-| Cola | archivos + URLs; `dl` manda un vídeo a `inbox/` y una playlist a una carpeta con su título |
+| Cola | archivos + URLs; `dl` manda un vídeo a `inbox/` y una playlist a una carpeta con su título. Al empezar a sonar, el archivo sale de la cola |
+| Ya descargado | cualquier texto entre `[]` en el nombre, en cualquier carpeta, evita bajar ese id otra vez |
 | `stop` | `quit` de mpv (proceso cerrado) |
 | Focus | `list`→lib; `search`→search (`queue n`) |
 | Audio | preferir pista `es` si yt-dlp la ofrece |
 | Subs | solo manuales `es`+`en` (no ASR); `cc [es\|en]` en sesión |
-| Random | `random on` mezcla la cola actual; sin arg lo apaga |
+| Random | `random` revuelve toda la cola y la reproduce desde el inicio |
+| `clear` | vacía la cola y la playlist de mpv |
 
 ## Comandos
 
 `list`, `play`, `queue`, `search`, `dl`, `mv`, `cc`, `random`,
-`next`, `pause`, `stop`, `status`, `help`, `exit`.
+`clear`, `next`, `pause`, `stop`, `status`, `help`, `exit`.
 
 Al arrancar y en `status`: categorías (con conteo), archivos,
 cookies (`YD_COOKIES`, `YD_COOKIES_FROM_BROWSER` o `cookies.txt`)

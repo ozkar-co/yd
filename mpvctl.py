@@ -10,6 +10,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import queue_store
 from paths import ensure_root, sock_path
 
 _proc: subprocess.Popen | None = None
@@ -120,7 +121,6 @@ def play_files(
     root: Path | None = None,
     *,
     sub_lang: str | None = None,
-    shuffle: bool = False,
 ) -> None:
     if not paths:
         raise RuntimeError("nada para reproducir")
@@ -133,7 +133,7 @@ def play_files(
             raise RuntimeError(f"loadfile falló ({p}): {resp}")
     _ipc(["set_property", "pause", False], root=root)
     apply_subs(sub_lang, root)
-    apply_shuffle(shuffle, root)
+    sync_queue(root)
 
 
 def play_one(
@@ -145,18 +145,59 @@ def play_one(
     play_files([path], root=root, sub_lang=sub_lang)
 
 
-def apply_shuffle(enabled: bool, root: Path | None = None) -> None:
-    """Mezcla la playlist de mpv. Apagado no reordena lo que ya suena."""
+def is_playing(root: Path | None = None) -> bool:
+    """Hay un archivo en curso. Idle o fin de playlist no cuentan."""
+    if not is_running(root):
+        return False
+    try:
+        idle = _ipc(["get_property", "idle-active"], root=root)
+        eof = _ipc(["get_property", "eof-reached"], root=root)
+    except RuntimeError:
+        return False
+    if idle.get("error") != "success" or idle.get("data") is True:
+        return False
+    if eof.get("error") == "success" and eof.get("data") is True:
+        return False
+    return True
+
+
+def started_paths(root: Path | None = None) -> list[str]:
+    """Archivos de la playlist de mpv hasta el que está sonando, inclusive."""
+    sock = sock_path(root)
+    if not sock.exists():
+        return []
+    try:
+        resp = _ipc(["get_property", "playlist"], root=root)
+    except RuntimeError:
+        return []
+    data = resp.get("data")
+    if resp.get("error") != "success" or not isinstance(data, list):
+        return []
+    paths: list[str] = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("filename")
+        if isinstance(name, str) and name:
+            paths.append(str(Path(name).resolve()))
+        if entry.get("current"):
+            return paths
+    return []
+
+
+def sync_queue(root: Path | None = None) -> None:
+    """El archivo que ya empezó sale de la cola."""
+    paths = started_paths(root)
+    if paths:
+        queue_store.remove_files(paths, root)
+
+
+def clear_playlist(root: Path | None = None) -> None:
     if not is_running(root):
         return
-    resp = _ipc(["set_property", "shuffle", bool(enabled)], root=root)
+    resp = _ipc(["playlist-clear"], root=root)
     if resp.get("error") != "success":
-        raise RuntimeError(f"random falló: {resp}")
-    if not enabled:
-        return
-    resp = _ipc(["playlist-shuffle"], root=root)
-    if resp.get("error") != "success":
-        raise RuntimeError(f"random falló: {resp}")
+        raise RuntimeError(f"clear falló: {resp}")
 
 
 def apply_subs(lang: str | None, root: Path | None = None) -> None:
@@ -232,12 +273,10 @@ def status_text(
     root: Path | None = None,
     *,
     sub_lang: str | None = None,
-    shuffle: bool = False,
 ) -> str:
     cc = f"cc: {sub_lang}" if sub_lang else "cc: off"
-    rnd = "random: on" if shuffle else "random: off"
     if not is_running(root):
-        return f"mpv: cerrado\n{cc}\n{rnd}"
+        return f"mpv: cerrado\n{cc}"
     path = _ipc(["get_property", "path"], root=root)
     pause = _ipc(["get_property", "pause"], root=root)
     pos = _ipc(["get_property", "playlist-pos"], root=root)
@@ -249,6 +288,5 @@ def status_text(
         f"mpv: {state}\n"
         f"archivo: {title}\n"
         f"playlist: {pos.get('data')}/{count.get('data')}\n"
-        f"{cc}\n"
-        f"{rnd}"
+        f"{cc}"
     )

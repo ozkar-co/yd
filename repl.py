@@ -25,7 +25,8 @@ comandos:
   dl <url>       vídeo → inbox; playlist → carpeta (si ya está, salta)
   mv <n> <cat>   mueve ítem a categoría (crea cat si no existe)
   cc [es|en]     subtítulos on (idioma) / off (sin arg)
-  random [on]    cola aleatoria on / off (sin arg)
+  random         revuelve la cola y la empieza de nuevo
+  clear          vacía la cola
   next pause     control mpv
   stop           cierra mpv
   status         config (cats, archivos, cookies) + mpv + cola
@@ -40,7 +41,6 @@ class Repl:
         self.search_hits: list[dict] = []
         self.focus = "lib"  # lib | search
         self.cc_lang: str | None = None  # sesión: es|en|None
-        self.shuffle = False  # sesión: reproducir la cola al azar
         worker.start(self.root)
 
     def refresh_lib(self, category: str | None = None) -> None:
@@ -157,6 +157,9 @@ class Repl:
 
     def cmd_play(self, args: list[str]) -> None:
         if not args:
+            if mpvctl.is_playing(self.root):
+                print("ya está sonando")
+                return
             ready = queue_store.ready_paths(self.root)
             pending = queue_store.pending_urls(self.root)
             if not ready and pending:
@@ -173,13 +176,11 @@ class Repl:
                     ready,
                     self.root,
                     sub_lang=self.cc_lang,
-                    shuffle=self.shuffle,
                 )
             except RuntimeError as exc:
                 print(exc)
                 return
-            extra = " random" if self.shuffle else ""
-            print(f"play cola: {len(ready)} listos{extra}"
+            print(f"play cola: {len(ready)} listos"
                   + (f", {len(pending)} pendientes" if pending else ""))
             return
         if not args[0].isdigit():
@@ -268,25 +269,42 @@ class Repl:
         print(f"cc: {lang}")
 
     def cmd_random(self, args: list[str]) -> None:
-        if not args:
-            self.shuffle = False
-            try:
-                mpvctl.apply_shuffle(False, self.root)
-            except RuntimeError as exc:
-                print(exc)
-                return
-            print("random: off")
+        if args:
+            print("uso: random")
             return
-        if args[0].lower() != "on":
-            print("uso: random [on]  (sin arg = off)")
+        items = queue_store.list_items(self.root)
+        if not items:
+            print("(cola vacía)")
             return
-        self.shuffle = True
+        n = queue_store.shuffle(self.root)
+        ready = queue_store.ready_paths(self.root)
+        if not ready:
+            print(f"cola revuelta: {n} (sin archivos listos)")
+            return
         try:
-            mpvctl.apply_shuffle(True, self.root)
+            mpvctl.play_files(ready, self.root, sub_lang=self.cc_lang)
         except RuntimeError as exc:
-            print(f"random: on (sesión; mpv no corría: {exc})")
+            print(exc)
             return
-        print("random: on")
+        print(f"random: {n} revueltos, desde el inicio")
+
+    def cmd_clear(self, args: list[str]) -> None:
+        if args:
+            print("uso: clear")
+            return
+        n = len(queue_store.list_items(self.root))
+        queue_store.clear(self.root)
+        err: RuntimeError | None = None
+        try:
+            mpvctl.clear_playlist(self.root)
+        except RuntimeError as exc:
+            err = exc
+        if n:
+            print(f"cola limpia ({n})")
+        else:
+            print("(cola vacía)")
+        if err:
+            print(err)
 
     def cmd_next(self, _: list[str]) -> None:
         try:
@@ -334,9 +352,7 @@ class Repl:
         for line in self.config_lines():
             print(line)
         print(f"focus: {self.focus}")
-        print(mpvctl.status_text(
-            self.root, sub_lang=self.cc_lang, shuffle=self.shuffle
-        ))
+        print(mpvctl.status_text(self.root, sub_lang=self.cc_lang))
         items = queue_store.list_items(self.root)
         print(f"cola: {len(items)} ítem(s)")
 
@@ -365,6 +381,7 @@ class Repl:
             "mv": self.cmd_mv,
             "cc": self.cmd_cc,
             "random": self.cmd_random,
+            "clear": self.cmd_clear,
             "next": self.cmd_next,
             "pause": self.cmd_pause,
             "stop": self.cmd_stop,

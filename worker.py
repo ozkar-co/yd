@@ -12,18 +12,31 @@ import queue_store
 
 _stop = threading.Event()
 _thread: threading.Thread | None = None
+_watch: threading.Thread | None = None
 _root: Path | None = None
 
 
 def start(root: Path | None = None) -> None:
-    global _thread, _root
+    global _thread, _watch, _root
     _root = root
     queue_store.reset_interrupted(root)
-    if _thread and _thread.is_alive():
-        return
     _stop.clear()
-    _thread = threading.Thread(target=_loop, name="yd-dl", daemon=True)
-    _thread.start()
+    if not (_thread and _thread.is_alive()):
+        _thread = threading.Thread(target=_loop, name="yd-dl", daemon=True)
+        _thread.start()
+    if not (_watch and _watch.is_alive()):
+        _watch = threading.Thread(target=_watch_play, name="yd-play", daemon=True)
+        _watch.start()
+
+
+def _watch_play() -> None:
+    """Saca de la cola el archivo que mpv ya está reproduciendo."""
+    while not _stop.is_set():
+        try:
+            mpvctl.sync_queue(_root)
+        except Exception:  # noqa: BLE001 — el watcher no debe morir
+            pass
+        _stop.wait(0.5)
 
 
 def stop_worker() -> None:

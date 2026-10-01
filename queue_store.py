@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import random
 import threading
 from pathlib import Path
 from typing import Any
@@ -200,6 +201,37 @@ def mark_url_error(url: str, error: str, root: Path | None = None) -> None:
 
 def clear(root: Path | None = None) -> None:
     _write_items([], root)
+
+
+def shuffle(root: Path | None = None) -> int:
+    """Revuelve el orden. No es un modo: la cola queda en el orden nuevo."""
+    items = list_items(root)
+    random.shuffle(items)
+    _write_items(items, root)
+    return len(items)
+
+
+def remove_files(paths: list[str], root: Path | None = None) -> int:
+    """Quita archivos que ya empezaron a reproducirse."""
+    if not paths:
+        return 0
+    wanted = {str(Path(p).resolve()) for p in paths}
+    items = list_items(root)
+    kept: list[dict[str, Any]] = []
+    removed = 0
+    for item in items:
+        path = item.get("path")
+        if (
+            item.get("kind") == "file"
+            and isinstance(path, str)
+            and path in wanted
+        ):
+            removed += 1
+            continue
+        kept.append(item)
+    if removed:
+        _write_items(kept, root)
+    return removed
 
 
 def ready_paths(root: Path | None = None) -> list[str]:

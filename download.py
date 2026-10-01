@@ -161,22 +161,112 @@ _GONE = (
 )
 
 
+def video_id_from_url(url: str) -> str:
+    """Id de YouTube en la URL. Vacío si no está a la vista."""
+    parsed = urlparse(url.strip())
+    host = parsed.netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if host.startswith("m."):
+        host = host[2:]
+    parts = [p for p in parsed.path.split("/") if p]
+    if host == "youtu.be":
+        return parts[0] if parts else ""
+    if host not in ("youtube.com", "music.youtube.com", "youtube-nocookie.com"):
+        return ""
+    found = parse_qs(parsed.query).get("v", [""])[0].strip()
+    if found:
+        return found
+    for marker in ("shorts", "embed", "live", "v"):
+        if marker in parts:
+            i = parts.index(marker)
+            if i + 1 < len(parts):
+                return parts[i + 1]
+    return ""
+
+
+def _ids_in_name(path: Path) -> list[str]:
+    return [m.strip() for m in _ID_IN_NAME.findall(path.stem) if m.strip()]
+
+
+def _remember(found: dict[str, Path], vid: str, path: Path) -> None:
+    current = found.get(vid)
+    if current is not None and current.suffix.lower() == ".mp4":
+        return
+    found[vid] = path
+
+
+def _skipped_media_path(path: Path, root: Path) -> bool:
+    try:
+        rel = path.relative_to(root)
+    except ValueError:
+        return True
+    return any(part.startswith(".") or part in RESERVED for part in rel.parts)
+
+
+def index_video_ids(root: Path) -> dict[str, Path]:
+    """Todo texto entre [] , en cualquier carpeta, cuenta como ya descargado."""
+    found: dict[str, Path] = {}
+    if not root.is_dir():
+        return found
+    files = sorted(
+        p
+        for p in root.rglob("*")
+        if p.is_file()
+        and p.suffix.lower() in VIDEO_EXT
+        and not _skipped_media_path(p, root)
+    )
+    for path in files:
+        resolved = path.resolve()
+        for vid in _ids_in_name(path):
+            _remember(found, vid, resolved)
+    return found
+
+
 def _index_by_id(dest: Path) -> dict[str, Path]:
     found: dict[str, Path] = {}
     if not dest.is_dir():
         return found
-    for path in dest.iterdir():
-        if not path.is_file() or path.suffix.lower() not in VIDEO_EXT:
-            continue
-        matches = _ID_IN_NAME.findall(path.stem)
-        if not matches:
-            continue
-        vid = matches[-1]
-        current = found.get(vid)
-        if current is not None and current.suffix.lower() == ".mp4":
-            continue
-        found[vid] = path.resolve()
+    files = sorted(
+        p
+        for p in dest.iterdir()
+        if p.is_file() and p.suffix.lower() in VIDEO_EXT
+    )
+    for path in files:
+        resolved = path.resolve()
+        for vid in _ids_in_name(path):
+            _remember(found, vid, resolved)
     return found
+
+
+def _probe_video_id(url: str, root: Path) -> str:
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": True,
+        "noplaylist": True,
+        **_auth_opts(root),
+    }
+    info = None
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except yt_dlp.utils.DownloadError:
+        return ""
+    finally:
+        _discard_cookie_snapshot(opts)
+    if isinstance(info, dict):
+        return str(info.get("id") or "")
+    return ""
+
+
+def _existing_video(url: str, root: Path) -> Path | None:
+    vid = video_id_from_url(url)
+    if not vid:
+        vid = _probe_video_id(url, root)
+    if not vid:
+        return None
+    return index_video_ids(root).get(vid)
 
 
 def _entry_url(entry: dict) -> str:
@@ -240,16 +330,15 @@ def _download_playlist(url: str, root: Path) -> list[Path]:
     info = _playlist_info(url, root)
     title = str(info.get("title") or info.get("id") or "playlist")
     folder = playlist_folder_name(title)
-    dest = category_dir(folder, root, create=True)
     entries = [e for e in (info.get("entries") or []) if isinstance(e, dict)]
-    plan = _playlist_plan(entries, _index_by_id(dest))
+    plan = _playlist_plan(entries, index_video_ids(root))
     if not plan:
         raise RuntimeError("playlist vacía")
     n_skip = sum(step["action"] == "skip" for step in plan)
     n_dl = sum(step["action"] == "download" for step in plan)
     if n_skip:
         extra = f", siguen {n_dl}" if n_dl else ""
-        print(f"\n[dl] {n_skip} ya en [{folder}]{extra}", flush=True)
+        print(f"\n[dl] {n_skip} ya en la biblioteca{extra}", flush=True)
     paths: list[Path] = []
     failures: list[str] = []
     for step in plan:
@@ -298,6 +387,10 @@ def _download_to(
     noplaylist: bool,
 ) -> list[Path]:
     root = ensure_root(root)
+    found = _existing_video(url, root)
+    if found is not None:
+        print(f"\n[dl] ya está [{found.parent.name}]: {found.name}", flush=True)
+        return [found]
     _prepare_runtime()
     dest = category_dir(category, root, create=True)
     before = {p.resolve() for p in dest.iterdir() if p.is_file()}
