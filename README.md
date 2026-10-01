@@ -13,7 +13,7 @@ make clean            # venv + caches + dist (no ./media)
 ```
 yd> dl https://www.youtube.com/watch?v=…
 yd> search queen of kings
-yd> queue 1
+yd> dl 1
 yd> list
 yd> mv 1 musica
 yd> play 1
@@ -50,15 +50,15 @@ Otra raíz, explícita: `YD_MEDIA_ROOT=/otra/ruta ./yd`.
 | Comando | Efecto |
 |---------|--------|
 | `list [cat]` | IDs únicos; o una categoría |
-| `play [n]` | cola lista, o ítem n. Si ya está sonando, no la reinicia |
-| `queue` | muestra cola |
-| `queue <n\|cat>` | encola ítem o categoría |
-| `search <q>` | YouTube → `queue n` encola URL (dl async) |
-| `dl <url>` | vídeo → `inbox/`; playlist → carpeta. Si algún `[id]` del nombre ya está en cualquier carpeta, salta |
+| `play [n]` | cola lista, o ítem n. En pausa, reanuda; si ya está sonando, no la reinicia |
+| `queue` | muestra la cola, sin números |
+| `queue <n\|cat>` | encola el n de `list`, o una categoría |
+| `search <q>` | YouTube; luego `dl n` |
+| `dl <url\|n>` | baja y encola. `n` es de la última búsqueda. Si el id ya está en cualquier carpeta, salta |
 | `mv <n> <cat>` | mueve; **crea** cat si no existe |
 | `cc [es\|en]` | subtítulos sesión; sin arg = off |
 | `random` | revuelve toda la cola y la reproduce desde el inicio |
-| `clear` | vacía la cola y la playlist de mpv |
+| `clear` | vacía la cola y lo que sigue en mpv; lo que suena sigue |
 | `next` `pause` | control |
 | `stop` | **cierra** mpv |
 | `status` | categorías, archivos, cookies, mpv/ffmpeg + cola |
@@ -68,8 +68,8 @@ Descargas: audio **es** si existe; subs **manuales** `es`+`en`
 (no auto-generados) junto al vídeo. `mv` mueve también los
 `.vtt`/`.srt` hermanos.
 
-Tras `search`, los números de `queue n` son resultados de
-búsqueda. Tras `list`, son IDs de biblioteca.
+`queue n`, `play n` y `mv n` usan los números de `list`.
+`dl n` usa los de la última búsqueda, y solo después de `search`.
 
 La cola descarga URLs en un hilo; cuando terminan, entran a
 `inbox/` y se pueden `play` / append a mpv si ya está sonando.

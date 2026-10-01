@@ -24,11 +24,12 @@ Laura: `[PER-MEDIA]`
 | Cola | archivos + URLs; `dl` manda un vídeo a `inbox/` y una playlist a una carpeta con su título. Al empezar a sonar, el archivo sale de la cola |
 | Ya descargado | cualquier texto entre `[]` en el nombre, en cualquier carpeta, evita bajar ese id otra vez |
 | `stop` | `quit` de mpv (proceso cerrado) |
-| Focus | `list`→lib; `search`→search (`queue n`) |
+| Números | `list` numera la biblioteca (`queue n`, `play n`, `mv n`). `search` numera la última búsqueda (`dl n`, y encola) |
+| Cola visible | `queue` sin números, para no mezclarlos con los de `list` |
 | Audio | preferir pista `es` si yt-dlp la ofrece |
 | Subs | solo manuales `es`+`en` (no ASR); `cc [es\|en]` en sesión |
 | Random | `random` revuelve toda la cola y la reproduce desde el inicio |
-| `clear` | vacía la cola y la playlist de mpv |
+| `clear` | vacía la cola y lo que sigue en mpv; el archivo que suena sigue |
 
 ## Comandos
 

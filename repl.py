@@ -18,11 +18,11 @@ from paths import category_dir, ensure_root, list_categories, media_root
 HELP = """\
 comandos:
   list [cat]     biblioteca (IDs únicos) o una categoría
-  play [n]       reproduce cola, o el ítem n
-  queue          muestra cola de reproducción
-  queue <n|cat>  encola ítem (lib/search) o categoría entera
-  search <q>     busca en YouTube (luego queue <n>)
-  dl <url>       vídeo → inbox; playlist → carpeta (si ya está, salta)
+  play [n]       reproduce cola, o el ítem n; en pausa, reanuda
+  queue          muestra la cola, sin números
+  queue <n|cat>  encola el n de list, o una categoría
+  search <q>     busca en YouTube
+  dl <url|n>     baja y encola; n es de la última búsqueda
   mv <n> <cat>   mueve ítem a categoría (crea cat si no existe)
   cc [es|en]     subtítulos on (idioma) / off (sin arg)
   random         revuelve la cola y la empieza de nuevo
@@ -39,13 +39,11 @@ class Repl:
         self.root = ensure_root()
         self.lib: list[library.LibItem] = []
         self.search_hits: list[dict] = []
-        self.focus = "lib"  # lib | search
         self.cc_lang: str | None = None  # sesión: es|en|None
         worker.start(self.root)
 
     def refresh_lib(self, category: str | None = None) -> None:
         self.lib = library.scan(self.root, category=category)
-        self.focus = "lib"
 
     def cmd_list(self, args: list[str]) -> None:
         cat = args[0] if args else None
@@ -86,9 +84,9 @@ class Repl:
             print("sin resultados")
             return
         self.search_hits = hits
-        self.focus = "search"
         for i, h in enumerate(hits, 1):
             print(f"  {i:3d}. {h['title']}")
+        print("dl <n> baja y encola")
 
     def _resolve_queue_target(self, token: str) -> None:
         # categoría
@@ -100,16 +98,9 @@ class Repl:
             items = library.scan(self.root, category=cat)
             n = queue_store.enqueue_files([it.path for it in items], self.root)
             print(f"encolados {n} de [{cat}]")
+            self._attach_ready()
             return
         n = int(token)
-        if self.focus == "search":
-            if n < 1 or n > len(self.search_hits):
-                print(f"índice search fuera de rango: {n}")
-                return
-            hit = self.search_hits[n - 1]
-            queue_store.enqueue_url(hit["url"], hit["title"], self.root)
-            print(f"encolado (dl): {hit['title']}")
-            return
         try:
             it = library.by_id(self.lib, n)
         except KeyError:
@@ -122,21 +113,40 @@ class Repl:
                 return
         queue_store.enqueue_file(it.path, self.root)
         print(f"encolado: {it.path.name}")
+        self._attach_ready()
 
-    def cmd_dl(self, args: list[str]) -> None:
-        if len(args) != 1 or not _is_url(args[0]):
-            print("uso: dl <url>")
-            return
-        url = args[0]
-        state = queue_store.enqueue_url(url, url, self.root)
+    def _enqueue_download(self, url: str, title: str) -> None:
+        state = queue_store.enqueue_url(url, title or url, self.root)
         kind = "playlist" if download.is_playlist_url(url) else "vídeo"
+        label = title if title and title != url else url
         if state == "queued":
-            print(f"ya en cola: {url}")
+            print(f"ya en cola: {label}")
             return
         if state == "retry":
-            print(f"reintento ({kind}): {url}")
+            print(f"reintento ({kind}): {label}")
             return
-        print(f"encolado ({kind}): {url}")
+        print(f"encolado ({kind}): {label}")
+
+    def cmd_dl(self, args: list[str]) -> None:
+        if len(args) != 1:
+            print("uso: dl <url|n>")
+            return
+        token = args[0]
+        if token.isdigit():
+            if not self.search_hits:
+                print("dl <n> solo después de search")
+                return
+            n = int(token)
+            if n < 1 or n > len(self.search_hits):
+                print(f"índice search fuera de rango: {n}")
+                return
+            hit = self.search_hits[n - 1]
+            self._enqueue_download(hit["url"], hit["title"])
+            return
+        if not _is_url(token):
+            print("uso: dl <url|n>")
+            return
+        self._enqueue_download(token, token)
 
     def cmd_queue(self, args: list[str]) -> None:
         if not args:
@@ -144,19 +154,36 @@ class Repl:
             if not items:
                 print("(cola vacía)")
                 return
-            for i, item in enumerate(items, 1):
+            for item in items:
                 if item.get("kind") == "file":
                     name = Path(item["path"]).name
-                    print(f"  {i:3d}. [ok] {name}")
+                    print(f"  [ok] {name}")
                 else:
                     st = item.get("status") or "pending"
                     title = item.get("title") or item.get("url")
-                    print(f"  {i:3d}. [{st}] {title}")
+                    print(f"  [{st}] {title}")
             return
         self._resolve_queue_target(args[0])
 
+    def _attach_ready(self) -> None:
+        """Si mpv ya suena, lo nuevo de la cola queda detrás para `next`."""
+        if not mpvctl.is_running(self.root):
+            return
+        try:
+            mpvctl.append_missing(queue_store.ready_paths(self.root), self.root)
+        except RuntimeError as exc:
+            print(exc)
+
     def cmd_play(self, args: list[str]) -> None:
         if not args:
+            if mpvctl.is_paused(self.root) and mpvctl.is_playing(self.root):
+                try:
+                    mpvctl.resume(self.root)
+                except RuntimeError as exc:
+                    print(exc)
+                    return
+                print("play")
+                return
             if mpvctl.is_playing(self.root):
                 print("ya está sonando")
                 return
@@ -169,7 +196,7 @@ class Repl:
                 )
                 return
             if not ready:
-                print("cola vacía — queue <n|cat> o search")
+                print("cola vacía — queue <n|cat> o dl <n>")
                 return
             try:
                 mpvctl.play_files(
@@ -187,9 +214,6 @@ class Repl:
             print("uso: play [n]")
             return
         n = int(args[0])
-        if self.focus == "search":
-            print("search → usá: queue n  (descarga async); luego play")
-            return
         if not self.lib:
             self.refresh_lib()
         try:
@@ -308,6 +332,9 @@ class Repl:
 
     def cmd_next(self, _: list[str]) -> None:
         try:
+            mpvctl.append_missing(
+                queue_store.ready_paths(self.root), self.root
+            )
             mpvctl.next_track(self.root)
             print("next")
         except RuntimeError as exc:
@@ -351,7 +378,6 @@ class Repl:
         print(f"root: {self.root}")
         for line in self.config_lines():
             print(line)
-        print(f"focus: {self.focus}")
         print(mpvctl.status_text(self.root, sub_lang=self.cc_lang))
         items = queue_store.list_items(self.root)
         print(f"cola: {len(items)} ítem(s)")

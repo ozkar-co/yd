@@ -193,6 +193,7 @@ def sync_queue(root: Path | None = None) -> None:
 
 
 def clear_playlist(root: Path | None = None) -> None:
+    """Quita lo que sigue. El archivo que está sonando sigue."""
     if not is_running(root):
         return
     resp = _ipc(["playlist-clear"], root=root)
@@ -215,6 +216,27 @@ def apply_subs(lang: str | None, root: Path | None = None) -> None:
         raise RuntimeError(f"cc {lang} falló: {resp}")
 
 
+def playlist_paths(root: Path | None = None) -> list[str]:
+    sock = sock_path(root)
+    if not sock.exists():
+        return []
+    try:
+        resp = _ipc(["get_property", "playlist"], root=root)
+    except RuntimeError:
+        return []
+    data = resp.get("data")
+    if resp.get("error") != "success" or not isinstance(data, list):
+        return []
+    paths: list[str] = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("filename")
+        if isinstance(name, str) and name:
+            paths.append(str(Path(name).resolve()))
+    return paths
+
+
 def append_file(path: str, root: Path | None = None) -> None:
     if not is_running(root):
         return
@@ -223,12 +245,46 @@ def append_file(path: str, root: Path | None = None) -> None:
         raise RuntimeError(f"append falló: {resp}")
 
 
+def append_missing(paths: list[str], root: Path | None = None) -> int:
+    """Mete en mpv los de la cola que todavía no están en su playlist."""
+    if not paths or not is_running(root):
+        return 0
+    have = set(playlist_paths(root))
+    added = 0
+    for raw in paths:
+        path = str(Path(raw).resolve())
+        if path in have:
+            continue
+        append_file(path, root)
+        have.add(path)
+        added += 1
+    return added
+
+
+def is_paused(root: Path | None = None) -> bool:
+    if not is_running(root):
+        return False
+    try:
+        resp = _ipc(["get_property", "pause"], root=root)
+    except RuntimeError:
+        return False
+    return resp.get("error") == "success" and bool(resp.get("data"))
+
+
+def resume(root: Path | None = None) -> None:
+    if not is_running(root):
+        raise RuntimeError("mpv no está corriendo")
+    resp = _ipc(["set_property", "pause", False], root=root)
+    if resp.get("error") != "success":
+        raise RuntimeError(f"play falló: {resp}")
+
+
 def next_track(root: Path | None = None) -> None:
     if not is_running(root):
         raise RuntimeError("mpv no está corriendo")
     resp = _ipc(["playlist-next", "weak"], root=root)
     if resp.get("error") != "success":
-        raise RuntimeError(f"next falló: {resp}")
+        raise RuntimeError("no hay siguiente")
 
 
 def pause_toggle(root: Path | None = None) -> None:
