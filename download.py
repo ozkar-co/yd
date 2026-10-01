@@ -146,8 +146,7 @@ def channel_videos_url(url: str) -> str | None:
         return None
     head = parts[0]
     if head.startswith("@") and len(head) > 1:
-        handle = "@" + head[1:].lower()
-        return f"https://www.youtube.com/{handle}/videos"
+        return f"https://www.youtube.com/{head}/videos"
     if head in ("channel", "c", "user") and len(parts) >= 2:
         return f"https://www.youtube.com/{head}/{parts[1]}/videos"
     return None
@@ -393,13 +392,60 @@ def _channel_folder(info: dict) -> str:
     return playlist_folder_name(name)
 
 
+def _handle_from_videos_url(url: str) -> str | None:
+    parts = [p for p in urlparse(url).path.split("/") if p]
+    if parts and parts[0].startswith("@") and len(parts[0]) > 1:
+        return parts[0]
+    return None
+
+
+def _resolve_handle_channel_id(handle: str, root: Path) -> str:
+    """Algunos @canal no resuelven en la API de pestañas. La búsqueda sí trae el id."""
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": True,
+        **_auth_opts(root),
+    }
+    info = None
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(f"ytsearch8:{handle}", download=False)
+    except yt_dlp.utils.DownloadError as exc:
+        _raise_download(exc)
+    finally:
+        _discard_cookie_snapshot(opts)
+    want = handle.lower()
+    for entry in (info or {}).get("entries") or []:
+        if not isinstance(entry, dict):
+            continue
+        uploader = str(entry.get("uploader_id") or "")
+        if uploader.lower() != want:
+            continue
+        cid = str(entry.get("channel_id") or "")
+        if cid.startswith("UC"):
+            return cid
+    raise RuntimeError(f"no se pudo resolver el canal {handle}")
+
+
 def _download_channel(url: str, root: Path) -> list[Path]:
     """Una tanda de vídeos subidos. Shorts y directos no entran.
 
     La pestaña viene de más nuevo a más viejo. Si los primeros ya
     están, la ventana se corre hacia atrás hasta completar la tanda
     o hasta el final del canal.
+
+    Un @canal se resuelve por búsqueda. La API de pestañas a veces
+    no abre esa URL y yt-dlp imprime un error aunque el canal exista.
     """
+    handle = _handle_from_videos_url(url)
+    if handle:
+        cid = _resolve_handle_channel_id(handle, root)
+        url = f"https://www.youtube.com/channel/{cid}/videos"
+    return _download_channel_at(url, root)
+
+
+def _download_channel_at(url: str, root: Path) -> list[Path]:
     existing = index_video_ids(root)
     window = CHANNEL_BATCH
     info: dict | None = None
