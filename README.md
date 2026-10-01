@@ -54,7 +54,7 @@ Otra raíz, explícita: `YD_MEDIA_ROOT=/otra/ruta ./yd`.
 | `queue` | muestra la cola, sin números |
 | `queue <n\|cat>` | encola el n de `list`, o una categoría |
 | `search <q>` | YouTube; luego `dl n` |
-| `dl <url\|n>` | baja y encola. `n` es de la última búsqueda. Si el id ya está en cualquier carpeta, salta |
+| `dl <url\|n\|@canal>` | baja y encola. `n` es de la última búsqueda. `@canal` baja vídeos (sin shorts), 10 por vez |
 | `mv <n> <cat>` | mueve; **crea** cat si no existe |
 | `cc [es\|en]` | subtítulos sesión; sin arg = off |
 | `random` | revuelve toda la cola y la reproduce desde el inicio |
@@ -70,6 +70,9 @@ Descargas: audio **es** si existe; subs **manuales** `es`+`en`
 
 `queue n`, `play n` y `mv n` usan los números de `list`.
 `dl n` usa los de la última búsqueda, y solo después de `search`.
+`dl @canal` baja solo vídeos subidos, de más nuevo a más viejo,
+10 por vez. Otra pasada sigue con los que faltan. Si el id ya
+está en cualquier carpeta, no se vuelve a bajar.
 
 La cola descarga URLs en un hilo; cuando terminan, entran a
 `inbox/` y se pueden `play` / append a mpv si ya está sonando.

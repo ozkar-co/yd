@@ -23,6 +23,7 @@ Laura: `[PER-MEDIA]`
 | IDs | asignados al hacer `list` (sesión) |
 | Cola | archivos + URLs; `dl` manda un vídeo a `inbox/` y una playlist a una carpeta con su título. Al empezar a sonar, el archivo sale de la cola |
 | Ya descargado | cualquier texto entre `[]` en el nombre, en cualquier carpeta, evita bajar ese id otra vez |
+| Canal | `dl @canal` baja la pestaña de vídeos (sin shorts), 10 por vez, de más nuevo a más viejo. Otra pasada sigue con los que faltan |
 | `stop` | `quit` de mpv (proceso cerrado) |
 | Números | `list` numera la biblioteca (`queue n`, `play n`, `mv n`). `search` numera la última búsqueda (`dl n`, y encola) |
 | Cola visible | `queue` sin números, para no mezclarlos con los de `list` |

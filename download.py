@@ -13,6 +13,9 @@ import yt_dlp
 
 from paths import RESERVED, VIDEO_EXT, category_dir, ensure_root, media_root
 
+# Cada `dl` de un canal baja esta cantidad, de más nuevo a más viejo.
+CHANNEL_BATCH = 10
+
 # Preferir audio en español si existe; si no, mejor audio.
 FORMAT = (
     "bestvideo[height<=720]+bestaudio[language^=es]/"
@@ -112,6 +115,52 @@ def _cookie_names(text: str) -> set[str]:
     return names
 
 
+_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+_YT_HOSTS = frozenset(
+    {"youtube.com", "music.youtube.com", "youtube-nocookie.com"}
+)
+
+
+def _yt_host(host: str) -> str:
+    host = host.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if host.startswith("m."):
+        host = host[2:]
+    return host
+
+
+def channel_videos_url(url: str) -> str | None:
+    """URL de la pestaña Vídeos, sin shorts ni directos. None si no es un canal.
+
+    Acepta `@canal` además de la URL. `/shorts/id` sigue siendo un vídeo.
+    """
+    raw = url.strip()
+    if raw.startswith("@") and "://" not in raw:
+        raw = "https://www.youtube.com/" + raw.lstrip("/")
+    parsed = urlparse(raw)
+    if _yt_host(parsed.netloc) not in _YT_HOSTS:
+        return None
+    parts = [p for p in parsed.path.split("/") if p]
+    if not parts:
+        return None
+    head = parts[0]
+    if head.startswith("@") and len(head) > 1:
+        handle = "@" + head[1:].lower()
+        return f"https://www.youtube.com/{handle}/videos"
+    if head in ("channel", "c", "user") and len(parts) >= 2:
+        return f"https://www.youtube.com/{head}/{parts[1]}/videos"
+    return None
+
+
+def media_kind(url: str) -> str:
+    if channel_videos_url(url):
+        return "canal"
+    if is_playlist_url(url):
+        return "playlist"
+    return "vídeo"
+
+
 def is_playlist_url(url: str) -> bool:
     """URL de playlist. Un watch?v= con list= sigue siendo un vídeo."""
     parsed = urlparse(url)
@@ -131,8 +180,15 @@ def playlist_folder_name(title: str) -> str:
 
 
 def download_into(url: str, *, root: Path | None = None) -> list[Path]:
-    """Un vídeo va a inbox. Una playlist, a una carpeta con su título."""
+    """Un vídeo va a inbox. Una playlist, a una carpeta con su título.
+
+    Un canal baja solo la pestaña de vídeos, de a `CHANNEL_BATCH`,
+    de más nuevo a más viejo. Lista vacía = no quedaba nada nuevo.
+    """
     root = ensure_root(root)
+    videos = channel_videos_url(url)
+    if videos:
+        return _download_channel(videos, root)
     if not is_playlist_url(url):
         return [download_url(url, category="inbox", root=root)]
     return _download_playlist(url, root)
@@ -305,7 +361,109 @@ def _short(msg: str) -> str:
     return line[:180]
 
 
-def _playlist_info(url: str, root: Path) -> dict:
+def _entry_video_id(entry: dict) -> str:
+    vid = str(entry.get("id") or "")
+    if _VIDEO_ID.fullmatch(vid):
+        return vid
+    return ""
+
+
+def _missing_videos(
+    entries: list[dict], existing: dict[str, Path]
+) -> list[dict]:
+    missing: list[dict] = []
+    for entry in entries:
+        vid = _entry_video_id(entry)
+        if not vid or vid in existing:
+            continue
+        if not _entry_url(entry):
+            continue
+        missing.append(entry)
+    return missing
+
+
+def _channel_folder(info: dict) -> str:
+    name = str(
+        info.get("channel")
+        or info.get("uploader")
+        or info.get("title")
+        or "canal"
+    )
+    name = re.sub(r"\s+-\s+videos$", "", name, flags=re.IGNORECASE).strip()
+    return playlist_folder_name(name)
+
+
+def _download_channel(url: str, root: Path) -> list[Path]:
+    """Una tanda de vídeos subidos. Shorts y directos no entran.
+
+    La pestaña viene de más nuevo a más viejo. Si los primeros ya
+    están, la ventana se corre hacia atrás hasta completar la tanda
+    o hasta el final del canal.
+    """
+    existing = index_video_ids(root)
+    window = CHANNEL_BATCH
+    info: dict | None = None
+    entries: list[dict] = []
+    ended = True
+    prev_len = -1
+    while window <= 5000:
+        info = _playlist_info(url, root, playlistend=window)
+        entries = [
+            e for e in (info.get("entries") or []) if isinstance(e, dict)
+        ]
+        missing = _missing_videos(entries, existing)
+        ended = len(entries) < window
+        if (
+            len(missing) >= CHANNEL_BATCH
+            or ended
+            or len(entries) == prev_len
+        ):
+            break
+        prev_len = len(entries)
+        window += CHANNEL_BATCH
+    if not isinstance(info, dict):
+        raise RuntimeError("canal vacío")
+    folder = _channel_folder(info)
+    batch = _missing_videos(entries, existing)[:CHANNEL_BATCH]
+    more = len(batch) == CHANNEL_BATCH and not ended
+    if not batch:
+        print(f"\n[dl] canal [{folder}]: al día", flush=True)
+        return []
+    extra = "; hay más viejos" if more else ""
+    print(
+        f"\n[dl] canal [{folder}]: bajan {len(batch)}{extra}",
+        flush=True,
+    )
+    paths: list[Path] = []
+    failures: list[str] = []
+    for entry in batch:
+        try:
+            paths.extend(
+                _download_to(
+                    _entry_url(entry),
+                    category=folder,
+                    root=root,
+                    noplaylist=True,
+                )
+            )
+        except RuntimeError as exc:
+            if _gone(str(exc)):
+                continue
+            failures.append(_short(str(exc)))
+    if failures:
+        raise RuntimeError(
+            f"faltan {len(failures)} en [{folder}] "
+            f"(volvé a lanzar dl); {failures[0]}"
+        )
+    if not paths:
+        print(f"\n[dl] canal [{folder}]: al día", flush=True)
+        return []
+    return paths
+
+
+def _playlist_info(
+    url: str, root: Path, *, playlistend: int | None = None
+) -> dict:
     opts = {
         "quiet": True,
         "no_warnings": True,
@@ -313,6 +471,8 @@ def _playlist_info(url: str, root: Path) -> dict:
         "noplaylist": False,
         **_auth_opts(root),
     }
+    if playlistend is not None:
+        opts["playlistend"] = playlistend
     info = None
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:

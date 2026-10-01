@@ -64,12 +64,16 @@ def _loop() -> None:
         try:
             paths = download.download_into(url, root=_root)
             queue_store.replace_url_with_files(url, paths, _root)
-            if mpvctl.is_running(_root):
+            if paths and mpvctl.is_running(_root):
                 for path in paths:
                     try:
                         mpvctl.append_file(str(path), _root)
                     except RuntimeError:
                         break
+            if not paths:
+                print("yd> ", end="", flush=True)
+                time.sleep(0.2)
+                continue
             if len(paths) == 1:
                 print(f"\n[dl] listo: {paths[0].name}", flush=True)
             else:

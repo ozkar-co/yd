@@ -22,7 +22,7 @@ comandos:
   queue          muestra la cola, sin números
   queue <n|cat>  encola el n de list, o una categoría
   search <q>     busca en YouTube
-  dl <url|n>     baja y encola; n es de la última búsqueda
+  dl <url|n|@x>  baja y encola; n búsqueda; @canal, 10 vídeos por vez
   mv <n> <cat>   mueve ítem a categoría (crea cat si no existe)
   cc [es|en]     subtítulos on (idioma) / off (sin arg)
   random         revuelve la cola y la empieza de nuevo
@@ -117,7 +117,7 @@ class Repl:
 
     def _enqueue_download(self, url: str, title: str) -> None:
         state = queue_store.enqueue_url(url, title or url, self.root)
-        kind = "playlist" if download.is_playlist_url(url) else "vídeo"
+        kind = download.media_kind(url)
         label = title if title and title != url else url
         if state == "queued":
             print(f"ya en cola: {label}")
@@ -129,7 +129,7 @@ class Repl:
 
     def cmd_dl(self, args: list[str]) -> None:
         if len(args) != 1:
-            print("uso: dl <url|n>")
+            print("uso: dl <url|n|@canal>")
             return
         token = args[0]
         if token.isdigit():
@@ -143,10 +143,12 @@ class Repl:
             hit = self.search_hits[n - 1]
             self._enqueue_download(hit["url"], hit["title"])
             return
-        if not _is_url(token):
-            print("uso: dl <url|n>")
+        target = download.channel_videos_url(token) or token
+        if not _is_url(target):
+            print("uso: dl <url|n|@canal>")
             return
-        self._enqueue_download(token, token)
+        label = token if token.startswith("@") else target
+        self._enqueue_download(target, label)
 
     def cmd_queue(self, args: list[str]) -> None:
         if not args:
